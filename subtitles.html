@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { background: transparent; margin: 0; overflow: hidden; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; text-align: center; }
+        .container { display: flex; flex-direction: column; align-items: center; padding: 10px; }
+        #ru-text { color: #E0E0E0; font-size: 24px; font-weight: 600; text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; margin-bottom: 6px; opacity: 0.9; min-height: 30px; }
+        #zh-text { color: #0ae7f5; font-size: 38px; font-weight: bold; text-shadow: 3px 3px 0 #000, -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 0px 3px 0 #000, 0px -3px 0 #000; line-height: 1.2; min-height: 45px; }
+    </style>
+</head>
+<body>
+    <div class="container"><div id="ru-text">Слушаю речь...</div><div id="zh-text"></div></div>
+    <script>
+        const [ruEl, zhEl] = [document.getElementById('ru-text'), document.getElementById('zh-text')];
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        const emojiPacks = {
+            subA: ['💀','🗿','♿'], subB: ['🐟','🤡','🎭'], subC: ['🚾','💦','💧'],
+            verbA: ['💀','⚡','🎯'], verbB: ['🌬','🌀','🌊'], verbC: ['🤬','❗','💨'],
+            adjA: ['👎','❌','🧊'], adjB: ['💎','🆒','💙'], adjC: ['😱','🤯','🥶'],
+            sexA: ['💫','🚻','💍']
+        };
+        const getEmoji = p => (c = p[Math.floor(Math.random() * p.length)]).repeat(3);
+
+        const profanityRules = [
+            { pack: emojiPacks.sexA, words: ['секс','трахаться','трахание','траханье','трах','переспать','порно','порнуха','трахать','потрахаться','вазелин'] },
+            { pack: emojiPacks.verbC, words: ['пошел нахуй','пошёл нахуй','пошел на хуй','пошёл на хуй','иди нахуй','иди на хуй','нахуй','на хуй','отъебись','завали ебало','съебись','съебался'] },
+            { pack: emojiPacks.subA, words: ['блядь','бля','бляха','шлюха','пиздец','хуйня','залупа','наебалово','хуета','пиздеж','пиздёж','дичь','хуень','ебатория'] },
+            { pack: emojiPacks.subB, words: ['блядина','долбоеб','долбоёб','долбоящер','мудак','мудила','пидор','пидорас','гондон','пиздабол','хуеплет','хуеплёт','еблан','ебланище','пиздюк','сука','гей','гейство','гомосек'] },
+            { pack: emojiPacks.subC, words: ['хуй','пизда','ебало','ебальник','срака','жоп','анал','анальн','очко','анус'] },
+            { pack: emojiPacks.verbA, words: ['ебашить','пиздануть','пиздануться','наебнуться','въебать','въебаться','разъебать','разебашить','проебать','отпиздить'] },
+            { pack: emojiPacks.verbB, words: ['наебать','наебывать','наёбывать','заебать','заебаться','заебывать','заёбывать','пиздеть','спиздеть','спиздить','доебаться','отъебаться','поебать'] },
+            { pack: emojiPacks.adjA, words: ['блятский','блядский','хуевый','хуёвый','хуево','хуёво','пиздецовый','пиздецово','ебанутый','ебануто','ебанский','ебаный','ебаная','ебовый'] },
+            { pack: emojiPacks.adjB, words: ['охуенный','охуенно','заебательский','заебись','пиздатый','пиздато','ебейший','ебейше'] },
+            { pack: emojiPacks.adjC, words: ['дохуя','нихуя','охуеть','ебать'] }
+        ];
+
+        // Добавлена замена криво распознанного "сей" (7%, 7 percent, 7 процент и т.д.) на "этот/эта"
+        const corrections = { 
+            "а именно": "а имена", 
+            "а именно оно": "а имена оно", 
+            "на хуй": "нахуй",
+            "7%": "этот",
+            "7 %": "этот",
+            "7 процент": "этот",
+            "7 процента": "этот",
+            "7 процентов": "этот",
+            "семь процентов": "этот",
+            "семь процент": "этот"
+        };
+        
+        const slangFixes = { "конченный": "безнадежный", "конченная": "безнадежная", "конченные": "безнадежные", "конченным": "безнадежным", "конченного": "безнадежного", "кринж": "стыд", "криндж": "стыд", "кринжово": "стыдно", "кринджово": "стыдно", "кринжую": "мне стыдно", "кринджую": "мне стыдно", "кринжует": "ему стыдно", "кринджует": "ему стыдно", "кринжовый": "постыдный", "кринжовая": "постыдная", "жесть": "ужас", "капец": "кошмар", "катка": "игра", "катку": "игру", "чел": "парень", "типок": "парень", "имба": "очень сильный", "слила": "проиграла", "слил": "проиграл" };
+        const qTriggers = ['как','почему','зачем','где','куда','откуда','что','кто','чей','когда','сколько','можно','разве','неужели','а имена'];
+        const eTriggers = ['вау','ура','блин','круто','класс','ого','жесть','стоп'];
+
+        function addPunctuation(text) {
+            let clean = text.trim().replace(/[?.!]+$/, '');
+            if (!clean) return clean;
+            let lower = clean.toLowerCase();
+            return qTriggers.some(t => lower.startsWith(t + ' ') || lower === t) ? clean + '?' : (eTriggers.some(t => lower.startsWith(t) || lower.endsWith(t)) ? clean + '!' : clean);
+        }
+
+        let translateTimeout = null;
+
+        async function processAndTranslate(rawText) {
+            let cleanText = rawText;
+            for (let [w, r] of Object.entries(corrections)) cleanText = cleanText.replace(new RegExp(w, "gi"), r);
+            
+            profanityRules.forEach(g => g.words.forEach(w => {
+                let r = new RegExp(w + "[а-яяё]*", "gi");
+                if (r.test(cleanText)) cleanText = cleanText.replace(r, getEmoji(g.pack));
+            }));
+
+            let ruText = addPunctuation(cleanText);
+            ruEl.innerText = ruText;
+
+            let adaptedText = ruText;
+            for (let [s, c] of Object.entries(slangFixes)) adaptedText = adaptedText.replace(new RegExp("(^|\\s)" + s + "(?=\\s|$|[.,!?])", "gi"), `$1${c}`);
+
+            let emojiList = [];
+            let textForTr = adaptedText.replace(/\p{Extended_Pictographic}/gu, m => (emojiList.push(m), ` ITEMJ${emojiList.length - 1}K `));
+
+            clearTimeout(translateTimeout);
+            translateTimeout = setTimeout(async () => {
+                let zhResult = textForTr;
+                if (textForTr.trim()) {
+                    try {
+                        let res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(textForTr)}&langpair=ru|zh-CN`);
+                        let data = await res.json();
+                        if (data?.responseData) zhResult = data.responseData.translatedText;
+                    } catch (e) { console.error(e); }
+                }
+
+                emojiList.forEach((e, i) => { zhResult = zhResult.replace(new RegExp(`[\\s\\.\\,]*ITEMJ${i}K[\\s\\.\\,]*`, "gi"), ` ${e} `); });
+                zhEl.innerText = zhResult.trim();
+            }, 300);
+        }
+
+        if (SpeechRec) {
+            const rec = new SpeechRec();
+            rec.continuous = true; rec.interimResults = true; rec.lang = 'ru-RU';
+            rec.onstart = () => { ruEl.innerText = "Слушаю..."; zhEl.innerText = ""; };
+            rec.onresult = e => { let t = Array.from(e.results).slice(e.resultIndex).map(r => r[0].transcript).join(''); if (t.trim()) processAndTranslate(t); };
+            rec.onerror = () => ruEl.innerText = "Разрешите микрофон!";
+            rec.onend = () => rec.start();
+            rec.start();
+        } else { ruEl.innerText = "Откройте через Chrome или Edge"; }
+    </script>
+</body>
+</html>

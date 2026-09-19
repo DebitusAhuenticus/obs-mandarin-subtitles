@@ -36,7 +36,6 @@
             { pack: emojiPacks.adjC, words: ['дохуя','нихуя','охуеть','ебать'] }
         ];
 
-        // Добавлена замена криво распознанного "сей" (7%, 7 percent, 7 процент и т.д.) на "этот/эта"
         const corrections = { 
             "а именно": "а имена", 
             "а именно оно": "а имена оно", 
@@ -86,9 +85,12 @@
                 let zhResult = textForTr;
                 if (textForTr.trim()) {
                     try {
-                        let res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(textForTr)}&langpair=ru|zh-CN`);
+                        // Используем стабильный публичный эндпоинт переводчика без ограничений
+                        let res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=ru&tl=zh-CN&dt=t&q=${encodeURIComponent(textForTr)}`);
                         let data = await res.json();
-                        if (data?.responseData) zhResult = data.responseData.translatedText;
+                        if (data && data[0]) {
+                            zhResult = data[0].map(item => item[0]).join('');
+                        }
                     } catch (e) { console.error(e); }
                 }
 
